@@ -53,9 +53,16 @@ assets/background.mp4
 assets/background_music.mp3
 *.log
 
-# API Keys (keep template but ignore actual keys)
+# API Keys and Credentials
 config/config.json
+config/client_secrets.json
+*.pickle
+credentials.json
 
 # Temporary files
 temp/
 tmp/
+
+# Test files
+test_*.py
+*_test.py

@@ -24,48 +24,36 @@ class VideoProcessor:
 
             final_output = output_dir / output_filename
 
-            # Input streams
-            background_video = ffmpeg.input(self.background_video)
+            # Input streams with looping for background video
+            background_video = ffmpeg.input(
+                self.background_video, stream_loop=-1)  # Infinite loop
             narration_audio = ffmpeg.input(audio_path)
-            background_music = ffmpeg.input(self.background_music)
 
-            # Get audio duration to determine video length
+            # Get audio duration
             probe = ffmpeg.probe(audio_path)
             duration = float(probe['streams'][0]['duration'])
 
-            # Process video: trim to audio duration and scale for YouTube Shorts (9:16)
+            # Process video: scale for YouTube Shorts (9:16) and match audio duration
             video = (
                 background_video
                 .video
                 .filter('scale', 1080, 1920)  # YouTube Shorts format
-                # Adjust speed if needed
-                .filter('setpts', f'PTS*{duration}/60')
-                # Loop if shorter than audio
-                .filter('loop', loop=-1, size=1, start=0)
-            )
-
-            # Mix audio: narration + background music (lower volume)
-            audio_mix = ffmpeg.filter(
-                [narration_audio.audio,
-                    background_music.audio.filter('volume', 0.2)],
-                'amix',
-                inputs=2,
-                duration='longest'
+                .filter('trim', duration=duration)  # Match audio duration
             )
 
             # Add subtitles if provided
             if subtitle_path and Path(subtitle_path).exists():
                 video = video.filter('subtitles', subtitle_path)
 
-            # Output with video and mixed audio
+            # Output with video and audio
             output = ffmpeg.output(
                 video,
-                audio_mix,
+                narration_audio,  # Use the entire input stream
                 str(final_output),
                 vcodec='libx264',
-                acodec='aac',
-                t=duration,
-                **{'b:v': '2M', 'b:a': '128k'}
+                acodec='copy',  # Copy audio without re-encoding
+                shortest=None,
+                t=duration
             )
 
             # Run the FFmpeg command
@@ -79,20 +67,49 @@ class VideoProcessor:
 
     def create_simple_srt(self, text, duration, output_path):
         """
-        Create a simple SRT subtitle file
-        This is a basic implementation - you might want to enhance it
+        Create a simple SRT subtitle file with smart sentence splitting
         """
         try:
-            # Split text into chunks for subtitles
-            words = text.split()
-            words_per_subtitle = 8
-            subtitle_chunks = [' '.join(words[i:i+words_per_subtitle])
-                               for i in range(0, len(words), words_per_subtitle)]
+            # Split text into meaningful chunks
+            lines = text.split('\n')
+            sentences = []
 
-            subtitle_duration = duration / len(subtitle_chunks)
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
 
+                # Handle title specially
+                if line.startswith('Title:'):
+                    title_parts = line[6:].strip().split(
+                        ' ', 1)  # Split after first word
+                    if len(title_parts) > 1:
+                        sentences.append(title_parts[0])  # First word of title
+                        sentences.append(title_parts[1])  # Rest of title
+                    else:
+                        sentences.append(line[6:].strip())
+                    continue
+
+                # Remove "Fact:" prefix if present
+                if line.startswith('Fact:'):
+                    line = line[5:].strip()
+
+                # Split long lines at natural pause points
+                if len(line.split()) > 12:
+                    parts = line.split(', ')
+                    sentences.extend([p.strip() for p in parts if p.strip()])
+                else:
+                    sentences.append(line)
+
+            # Clean up sentences
+            sentences = [s.strip() for s in sentences if s.strip()]
+
+            # Calculate timing
+            subtitle_duration = duration / len(sentences)
+
+            # Generate SRT content
             srt_content = ""
-            for i, chunk in enumerate(subtitle_chunks):
+            for i, sentence in enumerate(sentences):
                 start_time = i * subtitle_duration
                 end_time = (i + 1) * subtitle_duration
 
@@ -101,7 +118,7 @@ class VideoProcessor:
 
                 srt_content += f"{i + 1}\n"
                 srt_content += f"{start_formatted} --> {end_formatted}\n"
-                srt_content += f"{chunk}\n\n"
+                srt_content += f"{sentence}\n\n"
 
             # Create output directory if it doesn't exist
             output_dir = Path(output_path).parent
