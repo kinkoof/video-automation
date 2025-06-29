@@ -1,39 +1,36 @@
 import json
 from pathlib import Path
-from elevenlabs import generate, save, Voice, VoiceSettings
-from elevenlabs import set_api_key
+from f5_tts.api import F5TTS
 
 
 class AudioProcessor:
     def __init__(self):
-        config_path = Path(__file__).parent.parent / 'config' / 'config.json'
-        with open(config_path) as f:
-            config = json.load(f)
-
-        self.api_key = config['elevenlabs']['api_key']
-        self.voice_id = config['elevenlabs']['voice_id']
-        set_api_key(self.api_key)
+        self.tts = F5TTS()
 
     def text_to_speech(self, text, output_path):
         """
-        Convert text to speech using ElevenLabs API
+        Convert text to speech using F5-TTS
         """
         try:
-            audio = generate(
-                text=text,
-                voice=Voice(
-                    voice_id=self.voice_id,
-                    settings=VoiceSettings(
-                        stability=0.5, similarity_boost=0.75)
-                )
-            )
-
             # Create output directory if it doesn't exist
             output_dir = Path(output_path).parent
             output_dir.mkdir(parents=True, exist_ok=True)
 
-            # Save the audio file
-            save(audio, output_path)
+            # Reference files for voice style
+            ref_file = Path(__file__).parent.parent / \
+                'assets' / 'tts' / 'ref_voice.mp3'
+            ref_text = Path(__file__).parent.parent / \
+                'assets' / 'tts' / 'ref_text.txt'
+
+            # Use F5TTS instance to generate audio
+            audio_tuple = self.tts.infer(
+                gen_text=text, ref_file=str(ref_file), ref_text=str(ref_text))
+            # Unpack audio bytes from tuple
+            audio = audio_tuple[0] if isinstance(
+                audio_tuple, tuple) else audio_tuple
+            # Save audio to output_path
+            with open(output_path, "wb") as f:
+                f.write(audio)
             return True
 
         except Exception as e:
@@ -42,19 +39,10 @@ class AudioProcessor:
 
     def generate_subtitles(self, audio_path, output_path):
         """
-        Generate subtitles from audio using ElevenLabs API
-        Note: This is a placeholder as ElevenLabs STT is not yet publicly available
-        In the meantime, you might want to use other STT services like Google Speech-to-Text
+        Generate subtitles from audio - placeholder
         """
-        try:
-            # Placeholder for STT functionality
-            # When ElevenLabs STT becomes available, implement it here
-            print("STT functionality not yet implemented")
-            return False
-
-        except Exception as e:
-            print(f"Error in speech to text conversion: {str(e)}")
-            return False
+        print("STT functionality not yet implemented")
+        return False
 
 
 if __name__ == "__main__":

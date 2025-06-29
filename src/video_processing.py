@@ -51,16 +51,23 @@ class VideoProcessor:
                 narration_audio,  # Use the entire input stream
                 str(final_output),
                 vcodec='libx264',
-                acodec='copy',  # Copy audio without re-encoding
+                acodec='aac',  # Re-encode audio to aac for mp4 compatibility
+                audio_bitrate='192k',
                 shortest=None,
                 t=duration
             )
 
-            # Run the FFmpeg command
-            ffmpeg.run(output, overwrite_output=True, quiet=True)
+            # Run the FFmpeg command and capture stderr
+            ffmpeg.run(output, overwrite_output=True, quiet=True,
+                       capture_stdout=True, capture_stderr=True)
 
             return str(final_output)
 
+        except ffmpeg.Error as e:
+            print(f"Error creating video: ffmpeg error (see stderr output for detail)")
+            print("FFmpeg stdout:", e.stdout.decode('utf-8'))
+            print("FFmpeg stderr:", e.stderr.decode('utf-8'))
+            return None
         except Exception as e:
             print(f"Error creating video: {str(e)}")
             return None
